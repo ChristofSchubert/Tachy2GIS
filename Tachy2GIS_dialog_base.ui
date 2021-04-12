@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>Tachy2GisDialogBase</class>
  <widget class="QDialog" name="Tachy2GisDialogBase">
@@ -5,37 +6,111 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>696</width>
-    <height>561</height>
+    <width>566</width>
+    <height>491</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Tachy2GIS</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item column="0" row="7">
-    <layout class="QHBoxLayout" name="horizontalLayout_2">
+   <item row="0" column="0">
+    <widget class="QComboBox" name="portComboBox"/>
+   </item>
+   <item row="8" column="0">
+    <widget class="QDialogButtonBox" name="button_box">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+     </property>
+     <property name="centerButtons">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="0">
+    <widget class="QTableView" name="vertexTableView">
+     <property name="selectionMode">
+      <enum>QAbstractItemView::SingleSelection</enum>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+    </widget>
+   </item>
+   <item row="5" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
-      <widget class="QPushButton" name="zoomResetButton">
+      <layout class="QGridLayout" name="gridLayout_2" rowstretch="0,0,0,0,0" columnstretch="0,0,0">
+       <item row="4" column="1">
+        <widget class="QgsMapLayerComboBox" name="sourceLayerComboBox"/>
+       </item>
+       <item row="3" column="2">
+        <widget class="QPushButton" name="logFileButton">
+         <property name="text">
+          <string>Select</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_3">
+         <property name="text">
+          <string>Source layer:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label">
+         <property name="text">
+          <string>Log file:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLineEdit" name="logFileEdit">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="2">
+        <widget class="QPushButton" name="dumpButton">
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Dump</string>
+         </property>
+         <property name="autoRepeatInterval">
+          <number>100</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item row="7" column="0">
+    <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="0,0,0,0,0,0">
+     <item>
+      <widget class="QCheckBox" name="checkBox">
        <property name="text">
-        <string>Reset zoom</string>
+        <string>Punktfang</string>
        </property>
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="zoomModeComboBox">
-       <property name="currentText">
-        <string />
-       </property>
-      </widget>
+      <widget class="QLineEdit" name="lineEdit"/>
      </item>
      <item>
-      <widget class="QCheckBox" name="zoomActiveCheckBox">
+      <widget class="QLabel" name="label_2">
        <property name="text">
-        <string />
-       </property>
-       <property name="checked">
-        <bool>true</bool>
+        <string>local Z</string>
        </property>
       </widget>
      </item>
@@ -46,7 +121,7 @@
        </property>
        <property name="sizeHint" stdset="0">
         <size>
-         <width>40</width>
+         <width>1000</width>
          <height>20</height>
         </size>
        </property>
@@ -68,91 +143,16 @@
      </item>
     </layout>
    </item>
-   <item column="0" row="6">
-    <widget class="QTableView" name="vertexTableView">
-     <property name="selectionMode">
-      <enum>QAbstractItemView::SingleSelection</enum>
-     </property>
-     <property name="selectionBehavior">
-      <enum>QAbstractItemView::SelectRows</enum>
-     </property>
-    </widget>
-   </item>
-   <item column="0" row="5">
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <layout class="QGridLayout" columnstretch="0,1,0" name="gridLayout_2" rowstretch="0,0,0,0,0,0">
-       <item column="0" row="5">
-        <widget class="QLabel" name="label_3">
-         <property name="text">
-          <string>Source layer:</string>
-         </property>
-        </widget>
-       </item>
-       <item column="2" row="5">
-        <widget class="QPushButton" name="dumpButton">
-         <property name="maximumSize">
-          <size>
-           <width>80</width>
-           <height>16777215</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>Dump</string>
-         </property>
-        </widget>
-       </item>
-       <item column="0" row="3">
-        <widget class="QLabel" name="label">
-         <property name="text">
-          <string>Log file:</string>
-         </property>
-        </widget>
-       </item>
-       <item column="2" row="3">
-        <widget class="QPushButton" name="logFileButton">
-         <property name="text">
-          <string>Select</string>
-         </property>
-        </widget>
-       </item>
-       <item column="1" row="5">
-        <widget class="QgsMapLayerComboBox" name="sourceLayerComboBox" />
-       </item>
-       <item column="1" row="3">
-        <widget class="QLineEdit" name="logFileEdit">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-    </layout>
-   </item>
-   <item column="0" row="8">
-    <widget class="QDialogButtonBox" name="button_box">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
-     </property>
-     <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-     </property>
-    </widget>
-   </item>
-   <item column="0" row="0">
-    <widget class="QComboBox" name="portComboBox" />
-   </item>
   </layout>
  </widget>
  <customwidgets>
   <customwidget>
    <class>QgsMapLayerComboBox</class>
    <extends>QComboBox</extends>
-   <header>qgis.gui</header>
+   <header>qgsmaplayercombobox.h</header>
   </customwidget>
  </customwidgets>
- <resources />
+ <resources/>
  <connections>
   <connection>
    <sender>button_box</sender>
