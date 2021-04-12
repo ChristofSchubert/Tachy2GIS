@@ -27,8 +27,9 @@ from PyQt5.QtCore import *
 import os
 from PyQt5.Qt import QMessageBox
 from dateutil import parser as dateTimeParser
-import shapefile
-
+#import shapefile
+from qgis.core import *
+from qgis.gui import *
 
 class FieldDialog(Ui_Targetselection):
     ## This constant is used to map field data types to python data types.
@@ -65,7 +66,7 @@ class FieldDialog(Ui_Targetselection):
         # https://github.com/GeospatialPython/pyshp#reading-shapefile-meta-data
         baseType = fieldMetadata[1]
         decimalPrecision = fieldMetadata[3]
-        if baseType in ('N', 'F'):
+        if baseType == 'N':
             # these are numbers, ints have zero decimal places
             if decimalPrecision == 0:
                 return int
@@ -76,18 +77,21 @@ class FieldDialog(Ui_Targetselection):
             return str
         if baseType == 'D':
             return dateTimeParser.parse
-        if baseType == 'L':
-            return bool
         # An exception is thrown if an unknown type pops up
         raise ValueError('Unknown data type: ' + baseType)
 
 
-    def layerChanged(self):
+    def layerChanged(self): # Timmel
         if QtGui is None:
             return
         self.layer = self.targetLayerComboBox.currentLayer()
-        self.populateFieldTable()
-    
+        try:
+            dataUri = (self.layer.dataProvider().dataSourceUri().split('|')[0])[1]
+            if os.path.splitext(dataUri) == '.shp' or os.path.splitext(dataUri) == '.dbf':
+                self.populateFieldTable()
+        except:
+            pass
+
     def populateFieldTable(self): 
         if self.layer is None:
             return
@@ -107,9 +111,10 @@ class FieldDialog(Ui_Targetselection):
         # The first column is populated with the names of the fields and set to 'not editable' 
         for row, field in enumerate(fields):
             item = QtWidgets.QTableWidgetItem(field[0])
+            item2 = QtWidgets.QTableWidgetItem('')
             item.setFlags(item.flags() ^ Qt.ItemIsEditable)
             self.fieldTable.setItem(row, 0, item)
-            self.fieldTable.setItem(row, 1, None)
+            self.fieldTable.setItem(row, 1, item2)
         # QGIS gives field data types as integers. The TYPE_MAP translates these
         # to python types
         self.fieldTypes = [FieldDialog.fieldTypeFromShapefile(field) for field in fields]
@@ -139,10 +144,12 @@ class FieldDialog(Ui_Targetselection):
             try:
                 self.fieldData.append(dataType(datum))
             except ValueError:
+                pass
                 # if a cast is impossible, the process is aborted and a message is displayed
-                QMessageBox(QMessageBox.Critical,
-                            "Invalid data format.",
-                            "Could not convert value for field " + name + "\nusing " + str(dataType),
-                            QMessageBox.Ok).exec_()
-                return 
+                #QMessageBox(QMessageBox.Critical,
+                #            "Invalid data format.",
+                #            "Could not convert value for field " + name + "\nusing " + str(dataType),
+                #            QMessageBox.Ok).exec_()
+                #return
         self.accept()
+
