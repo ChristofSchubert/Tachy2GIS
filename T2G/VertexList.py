@@ -5,16 +5,16 @@
 #******************************************************************************
 import os.path
 import re
-
-from PyQt5 import Qt
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot, QMutex, QAbstractTableModel, Qt
+import datetime
+import uuid
+from PyQt5.QtCore import *
 from PyQt5.QtWidgets import QApplication as qApp
 from qgis.core import *
 from qgis.gui import *
-from .shaping import add_shape
 
 from . import GSI_Parser
 from .. import AnchorUpdateDialog
+from ..Tachy2GIS_dialog import Tachy2GisDialog
 
 #  some helpful regular expressions for handling wkt:
 ## This regular expressions pulls all numbers from a single vertex
@@ -29,7 +29,8 @@ WKT_REMOVE_MEASURE = re.compile(r" \d+(?=[,)])")
 WKT_EXTENSIONS = [' ', 'Z ', 'ZM ']
 
 try:
-    import shapefile
+    #import shapefile
+    pass
 except ImportError:
     print('Please install pyshp from https://pypi.python.org/pypi/pyshp/ to handle shapefiles')
     raise
@@ -109,12 +110,15 @@ class AnchorUpdater(QObject):
                     newAnchor = QgsFeature(pointIndex)
                     pointIndex += 1
                     #anchorPoint.fromWkt(anchorWkt)
-                    newAnchor.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(coordinates[0], coordinates[1])))
-                    self.anchorIndex.insertFeature(newAnchor)
-                    # Just checking if this worked:
-                    testWkt = newAnchor.geometry().asWkt()
-                    nn = self.anchorIndex.nearestNeighbor(QgsPointXY(coordinates[0], coordinates[1]), 1)
-                self.signalAnchorCount.emit(i + 1)
+                    try:  # Timmel
+                        newAnchor.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(coordinates[0], coordinates[1])))
+                        self.anchorIndex.insertFeature(newAnchor)
+                        # Just checking if this worked:
+                        testWkt = newAnchor.geometry().asWkt()
+                        nn = self.anchorIndex.nearestNeighbor(QgsPointXY(coordinates[0], coordinates[1]), 1)
+                        self.signalAnchorCount.emit(i + 1)
+                    except:  # Timmel
+                        pass  # Timmel
                 qApp.processEvents()
                 if self.abort: 
                     self.anchorPoints = []
@@ -139,8 +143,9 @@ class T2G_Vertex():
                  SOURCE_EXTERNAL: SHAPE_EXTERNAL}
     ## Headers for displaying vertices in a tableView
     HEADERS = ['#', 'Source', 'x', 'y', 'z']
-    
-    
+
+    messliste = [] #Timmel
+
     ## Constructor
     #  @param label Point number or identifier
     #  @param source Should be one of the defined source keywords
@@ -153,8 +158,15 @@ class T2G_Vertex():
         self.x = x
         self.y = y
         self.z = z
+
         self.wkt = wkt
         self.wktDimensions = 0
+        if self.x is not None:
+            self.wktDimensions += 1
+        if self.y is not None:
+            self.wktDimensions += 1
+        if self.z is not None:
+            self.wktDimensions += 1
         if not wkt == "":
             self.setWkt(wkt)
 
@@ -172,7 +184,7 @@ class T2G_Vertex():
     #  @param xyz a list or tuple of coordinates
     def setXyz(self, xyz):
         self.x, self.y, self.z = xyz
-    
+
     ## Sets the vertex' coordinates from Well Known Text
     #  @param wkt A string containing at least two numbers
     def setWkt(self, wkt):
@@ -218,7 +230,18 @@ class T2G_Vertex():
         x = vtxData['targetX']
         y = vtxData['targetY']
         z = vtxData['targetZ']
+
+        #Timmel Spiegelhöhe
+        try:
+            project = QgsProject.instance()
+            reflH = QgsExpressionContextUtils.projectScope(project).variable('reflH')
+            reflH = float(reflH)
+            z = round(float(z) - reflH, 3)
+        except:
+            pass
+
         source = T2G_Vertex.SOURCE_EXTERNAL
+        T2G_Vertex.messliste.append(vtxData)  # Timmel
         return T2G_Vertex(label, source, x, y, z)
 
 
@@ -233,8 +256,9 @@ class T2G_VertexList(QAbstractTableModel):
     VERTEX_COLOR = Qt.red
     ### Selected vertices get a different color
     SELECTED_COLOR = Qt.green
-    signal_feature_dumped = pyqtSignal()
-    
+
+    snap = 0
+
     ## Ctor
     #  @param vertices the vertex list can be initialized with a list of vertices
     #  @param parent included to match the ctor of QAbstractTableModel
@@ -251,8 +275,7 @@ class T2G_VertexList(QAbstractTableModel):
         self.maxIndex = None
         self.updateThread = QThread()
         self.anchorUpdater = None
-        self.layer = None
-    
+
     ## Reimplemented from QAbstractTableModel
     def rowCount(self, *args, **kwargs):
         return len(self)
@@ -300,7 +323,6 @@ class T2G_VertexList(QAbstractTableModel):
         if layer is None:
             # empty or nonexisting layers leave us with an empty point list and index.
             return
-        self.layer = layer
         # Initializing the progress dialog
         aud = AnchorUpdateDialog.AnchorUpdateDialog()
         aud.abortButton.clicked.connect(self.abortUpdate)
@@ -355,8 +377,9 @@ class T2G_VertexList(QAbstractTableModel):
     #  @param vertex the vertex to append, is assumed to be of type T2G_Vertex
     #  @return the probably modified vertex
     def append(self, vertex):
+
         if vertex.source == T2G_Vertex.SOURCE_INTERNAL:
-            anchorId = self.anchorIndex.nearestNeighbor(vertex.getQgsPointXY(), 1)
+            anchorId = self.anchorIndex.nearestNeighbor(vertex.getQgsPointXY(), T2G_VertexList.snap)
             # nearestNeighbour returns a list. It is not unpacked yet, because 
             # doing so causes errors if it is empty, also index '0' is interpreted
             # as 'False' and gets ignored
@@ -371,7 +394,11 @@ class T2G_VertexList(QAbstractTableModel):
     def deleteVertex(self, index):
         del self.vertices[index]
         self.layoutChanged.emit()
-    
+        for i, vertex in enumerate(self.vertices): #Timmel
+            if i == self.selected:
+                T2G_Vertex.messliste.pop(i)
+
+
     def select(self, index):
         if index >= len(self):
             return
@@ -402,6 +429,158 @@ class T2G_VertexList(QAbstractTableModel):
     #  @return a double nested list of coordinates. 
     def getParts(self):
         return [[v.getCoords() for v in self.vertices]]
+    
+    ## creates a shapefile.writer to add a polygon geometry to a shapefile
+    #  @param reader a shapefile.reader that represents the shapefile that is being worked on
+    #  @return a writer that has been used to add the geometry and now waits for attributes to be added 
+    def writePoly(self, targetLayer):
+        vertexParts = self.getParts()
+        self.addPolyLine3D(targetLayer, vertexParts[0], [])
+
+    ## creates a shapefile.writer to add a linestring geometry to a shapefile
+    #  @param reader a shapefile.reader that represents the shapefile that is being worked on
+    #  @return a writer that has been used to add the geometry and now waits for attributes to be added 
+    def writeLine(self, targetLayer):
+        vertexParts = self.getParts()
+        self.addLine3D(targetLayer, vertexParts[0], [])
+
+    ## creates a shapefile.writer to add a point geometry to a shapefile
+    #  @param reader a shapefile.reader that represents the shapefile that is being worked on
+    #  @return a writer that has been used to add the geometry and now waits for attributes to be added 
+    def writePoint(self, targetLayer):
+        coords = self.vertices[self.selected].getCoords()
+        self.addPoint3D(targetLayer, coords, [])
+
+
+    def addMesspunkt(self, coords):
+        layer = QgsProject.instance().mapLayersByName('Messpunkte')[0]
+        project = QgsProject.instance()
+        reflH = QgsExpressionContextUtils.projectScope(project).variable('reflH')
+        if reflH != None:
+            reflH = float(reflH)
+        pt = QgsPoint(float(coords[0]), float(coords[1]), float(coords[2]))
+
+        attList = {'ptnr': '0' , 'x': coords[0], 'y': coords[1], 'z': coords[2], 'reflH': reflH}
+        self.addPoint3D(layer, coords, attList)
+        #QgsMessageLog.logMessage(str(''), 'T2G-Messpunkte', Qgis.Info)
+
+    def addPolyLine3D(self, layer, coords, attList):
+        layer.startEditing()
+        feature = QgsFeature()
+        fields = layer.fields()
+        feature.setFields(fields)
+
+        ptList = []
+        for a in coords:
+            item = QgsPoint(a[0], a[1], a[2])
+            ptList.append(item)
+            #self.addMesspunkt(a)
+        #ersten Punkt als letzten einfügen
+        ptList.append(ptList[0])
+
+        feature.setGeometry(QgsGeometry.fromPolyline(ptList))
+        # Attribute
+        layer.dataProvider().addFeatures([feature])
+        layer.updateExtents()
+        features = [feature for feature in layer.getFeatures()]
+        lastfeature = features[-1]
+
+        for item in attList:
+            # QgsMessageLog.logMessage(str(item), 'T2G', Qgis.Info)
+            fIndex = layer.dataProvider().fieldNameIndex(item)
+            layer.changeAttributeValue(lastfeature.id(), fIndex, attList[item])
+
+        self.addStaticAttribut(layer, lastfeature)
+        pass
+
+    def addLine3D(self, layer, coords, attList):
+        layer.startEditing()
+        feature = QgsFeature()
+        fields = layer.fields()
+        feature.setFields(fields)
+
+        ptList = []
+        for a in coords:
+            item = QgsPoint(a[0] ,a[1] ,a[2])
+            ptList.append(item)
+            #self.addMesspunkt(a)
+
+        feature.setGeometry(QgsGeometry.fromPolyline(ptList))
+        # Attribute
+        layer.dataProvider().addFeatures([feature])
+        layer.updateExtents()
+        features = [feature for feature in layer.getFeatures()]
+        lastfeature = features[-1]
+
+        for item in attList:
+            # QgsMessageLog.logMessage(str(item), 'T2G', Qgis.Info)
+            fIndex = layer.dataProvider().fieldNameIndex(item)
+            layer.changeAttributeValue(lastfeature.id(), fIndex, attList[item])
+        self.addStaticAttribut(layer, lastfeature)
+
+    def addPoint3D(self, layer, coords, attList):
+        layer.startEditing()
+        feature = QgsFeature()
+        fields = layer.fields()
+        feature.setFields(fields)
+        pt = QgsPoint(float(coords[0]), float(coords[1]), float(coords[2]))
+        feature.setGeometry(QgsGeometry(pt))
+        # Attribute
+        layer.dataProvider().addFeatures([feature])
+        layer.updateExtents()
+        features = [feature for feature in layer.getFeatures()]
+        lastfeature = features[-1]
+
+        for item in attList:
+            #QgsMessageLog.logMessage(str(item), 'T2G', Qgis.Info)
+            fIndex = layer.dataProvider().fieldNameIndex(item)
+            layer.changeAttributeValue(lastfeature.id(), fIndex, attList[item])
+
+        #layer.commitChanges()
+        self.addStaticAttribut(layer, lastfeature)
+
+
+    def addStaticAttribut(self, targetLayer, feature):
+
+        # Projektvariablen holen
+        project = QgsProject.instance()
+        idfeld = targetLayer.dataProvider().fieldNameIndex('id')
+        nextid = targetLayer.maximumValue(idfeld)
+        if nextid != None:
+            nextid = nextid + 1
+        else:
+            nextid = 0
+
+        targetLayer.startEditing()
+        if QgsExpressionContextUtils.projectScope(project).variable('autoAttribute') == 'True':
+            attrName = ['obj_type', 'obj_art', 'schnitt_nr', 'bef_nr', 'prof_nr', 'planum',  'fund_nr', 'prob_nr',
+                        'material', 'planum']
+            for elm in attrName:
+                wert = QgsExpressionContextUtils.projectScope(project).variable(str(elm))
+                indx = targetLayer.dataProvider().fieldNameIndex(str(elm))
+                targetLayer.changeAttributeValue(feature.id(), indx, wert)
+
+        # Layer zum schreiben öffnen
+        #targetLayer.startEditing()
+        UUid = targetLayer.dataProvider().fieldNameIndex('uuid')
+        targetLayer.changeAttributeValue(feature.id(), UUid, '{' + str(uuid.uuid4()) + '}')
+        targetLayer.changeAttributeValue(feature.id(), 0, int(nextid))
+        aktcode = QgsExpressionContextUtils.projectScope(project).variable('aktcode')
+        geoarch = QgsExpressionContextUtils.projectScope(project).variable('geo-arch')
+        # weitere automatische Attribute
+        idMesDatum = targetLayer.dataProvider().fieldNameIndex('messdatum')
+        idAktCode = targetLayer.dataProvider().fieldNameIndex('aktcode')
+        idgeoarch = targetLayer.dataProvider().fieldNameIndex('geo-arch')
+
+        targetLayer.changeAttributeValue(feature.id(), idMesDatum, str(datetime.datetime.now()))
+        targetLayer.changeAttributeValue(feature.id(), idAktCode, aktcode)
+        targetLayer.changeAttributeValue(feature.id(), idgeoarch, geoarch)
+
+        QgsExpressionContextUtils.setProjectVariable(QgsProject.instance(), 'SignalGeometrieNeu', 'True' + '_' + str(feature.id()))
+        # Attribute aktualisieren und speichern
+        #targetLayer.updateExtents()
+        #targetLayer.commitChanges()
+
 
     ## Turns the vertices into geometry and writes them to a shapefile
     #  @param targetLayer a vectordatalayer that is suspected to be based on a
@@ -413,17 +592,16 @@ class T2G_VertexList(QAbstractTableModel):
             return
         if not targetLayer.dataProvider().name() == 'ogr':
             return
-        # the absolute path to the shapefile is extracted from its URI
-        dataUri = targetLayer.dataProvider().dataSourceUri()
-        targetFileName = os.path.splitext(dataUri.split('|')[0])[0]
-        add_shape(targetFileName, self.getParts(), fieldData)
-        self.signal_feature_dumped.emit()
-
-    def get_qgs_points(self):
-        return [vertex.getQgsPointXY() for vertex in self.vertices]
+        if targetLayer.geometryType() == QgsWkbTypes.PointGeometry:
+            self.writePoint(targetLayer)
+        if targetLayer.geometryType() == QgsWkbTypes.LineGeometry:
+            self.writeLine(targetLayer)
+        if targetLayer.geometryType() == QgsWkbTypes.PolygonGeometry:
+            self.writePoly(targetLayer)
 
 
 if __name__ == '__main__':
     testLine16 = '*11....+0000000000000306 21.022+0000000002264250 22.022+0000000009831450 31..00+0000000000002316 81..00+0000000565386572 82..00+0000005924616673 83..00+0000000000005367 87..10+0000000000000000 \r\n'
     vtx = T2G_Vertex.fromGSI(testLine16)
     print(vtx.fields())
+
