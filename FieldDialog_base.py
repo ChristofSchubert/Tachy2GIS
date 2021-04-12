@@ -12,8 +12,8 @@ from qgis.gui import QgsMapLayerComboBox
 class Ui_Targetselection(QtWidgets.QDialog):
     def setupUi(self, Targetselection):
         Targetselection.setObjectName("Targetselection")
-        Targetselection.resize(438, 328)
-        Targetselection.setModal(True)
+        Targetselection.resize(700, 328)
+        Targetselection.setModal(False)
         self.verticalLayout = QtWidgets.QVBoxLayout(Targetselection)
         self.verticalLayout.setObjectName("verticalLayout")
         self.layerLabel = QtWidgets.QLabel(Targetselection)
@@ -44,5 +44,8 @@ class Ui_Targetselection(QtWidgets.QDialog):
         _translate = QtCore.QCoreApplication.translate
         Targetselection.setWindowTitle(_translate("Targetselection", "Dialog"))
         self.layerLabel.setText(_translate("Targetselection", "Target layer:"))
+
+
+
 
 
