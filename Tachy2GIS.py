@@ -23,22 +23,12 @@
 import os.path
 from . import resources
 
-import pydevd
-try:
-    pydevd.settrace('localhost',
-                    port=6565,
-                    stdoutToServer=True,
-                    stderrToServer=True,
-                    suspend=False)
-except ConnectionRefusedError:
-    pass
-
 from PyQt5.QtSerialPort import QSerialPortInfo, QSerialPort
-from PyQt5.QtWidgets import QAction, QHeaderView, QDialog, QFileDialog
+from PyQt5.QtWidgets import QAction, QHeaderView, QDialog, QFileDialog, QMessageBox
 from PyQt5.QtCore import QSettings, QItemSelectionModel, QTranslator, QCoreApplication, QThread, qVersion, Qt
 from PyQt5.QtGui import QIcon
 from qgis.utils import iface
-from qgis.core import QgsMapLayerProxyModel
+from qgis.core import *#QgsPoint,QgsMapLayerProxyModel, QgsExpressionContextUtils, QgsProject, QgsMessageLog, Qgis, QgsWkbTypes
 from qgis.gui import QgsMapToolPan
 
 from .T2G.VertexList import T2G_VertexList, T2G_Vertex
@@ -46,8 +36,8 @@ from .T2G.TachyReader import TachyReader
 from .FieldDialog import FieldDialog
 from .T2G.VertexPickerTool import T2G_VertexePickerTool
 from .Tachy2GIS_dialog import Tachy2GisDialog
-from .T2G.autoZoomer import ExtentProvider, AutoZoomer
 
+import datetime
 
 # Initialize Qt resources from file resources.py
 
@@ -55,11 +45,9 @@ from .T2G.autoZoomer import ExtentProvider, AutoZoomer
 
 
 class Tachy2Gis:
-    
+
     """QGIS Plugin Implementation."""
     # Custom methods go here:
-
-    NO_PORT = 'Select tachymeter USB port'
 
     def vertexReceived(self, line):
         newVtx = T2G_Vertex.fromGSI(line)
@@ -71,24 +59,111 @@ class Tachy2Gis:
 
     ## Opens the field dialog in preparation of dumping new vertices to the target layer
     def dump(self):
+
         # the input table of the dialog is updated
-        self.fieldDialog.populateFieldTable()
-        result = self.fieldDialog.exec_()
-        if result == QDialog.Accepted:
-            targetLayer = self.fieldDialog.layer
-            self.vertexList.dumpToFile(targetLayer, self.fieldDialog.fieldData)
-            # if the target layer holds point geometries, only the currently selected vertex is dumped and
-            # removed from the list
-            if self.fieldDialog.targetLayerComboBox.currentLayer().geometryType() == 0:
-                self.mapTool.deleteVertex()
-            else:
-                # otherwise the list is cleared
-                self.mapTool.clear()
-            targetLayer.dataProvider().forceReload()
-            targetLayer.triggerRepaint()
-            self.vertexList.updateAnchors(self.dlg.sourceLayerComboBox.currentLayer())
+        targetLayer = self.dlg.sourceLayerComboBox.currentLayer()
+        # if the target layer holds point geometries, only the currently selected vertex is dumped and
+        # removed from the list
+        project = QgsProject.instance()
+        QgsExpressionContextUtils.setProjectVariable(project, 'maxWerteAktualisieren', 'False')
+        #QgsMessageLog.logMessage('Test', 'T2G Archäologie', Qgis.Info)
+        if targetLayer.geometryType() == QgsWkbTypes.PointGeometry: # Timmel
+             for i in range(0,len(self.vertexList)):
+                #QgsExpressionContextUtils.setProjectVariable(project, 'SignalGeometrieNeu', 'True')
+                self.dlg.vertexTableView.selectRow(i)
+                self.vertexList.dumpToFile(targetLayer, self.fieldDialog.fieldData)
+                #QgsExpressionContextUtils.setProjectVariable(project, 'SignalGeometrieNeu', 'False')
+            # self.mapTool.deleteVertex()
+            # otherwise the list is cleared
+            #self.mapTool.clear()
         else:
-            return
+            #QgsExpressionContextUtils.setProjectVariable(project, 'SignalGeometrieNeu', 'True')
+            self.vertexList.dumpToFile(targetLayer, self.fieldDialog.fieldData)
+            #QgsExpressionContextUtils.setProjectVariable(project, 'SignalGeometrieNeu', 'False')
+            # otherwise the list is cleared
+            #self.mapTool.clear()
+
+        #QgsExpressionContextUtils.setProjectVariable(QgsProject.instance(), 'SignalGeometrieNeu', 'False')
+        targetLayer.commitChanges()
+        # Attributdialog mit Filter zum schreiben öffnen
+        # letzte id ermitteln
+        idfeld = targetLayer.dataProvider().fieldNameIndex('id')
+
+        if targetLayer.maximumValue(idfeld) == None:
+            idmaxi = 0
+        else:
+            idmaxi = targetLayer.maximumValue(idfeld)
+
+        if targetLayer.geometryType() == QgsWkbTypes.PointGeometry:
+            query = "id >= " + str(int(idmaxi)-len(self.vertexList) + 1)
+        else:
+            query = "id = " + str(int(idmaxi))
+
+        self.messpunktAdd()
+        targetLayer.startEditing()
+        targetLayer.fields().at(0).constraints().constraintDescription(), 'desc'
+        #self.iface.openFeatureForm(targetLayer, 3, True)
+        box = self.iface.showAttributeTable(targetLayer, query)
+        box.exec_()
+        self.mapTool.clear()
+        targetLayer.commitChanges()
+        QgsExpressionContextUtils.setProjectVariable(project, 'maxWerteAktualisieren', 'True')
+        self.iface.mapCanvas().refreshAllLayers()
+        targetLayer.removeSelection()
+
+    def messpunktAdd(self):
+        #T2G_Vertex.messliste.clear()
+        #T2G_Vertex.messliste.append({'pointId': 1, 'targetX': 1, 'targetY': 1, 'targetZ': 1})
+        #T2G_Vertex.messliste.append({'pointId': 2, 'targetX': 1, 'targetY': 1, 'targetZ': 1})
+        #T2G_Vertex.messliste.append({'pointId': 3, 'targetX': 1, 'targetY': 1, 'targetZ': 1})
+        layer = QgsProject.instance().mapLayersByName('Messpunkte')[0]
+        layer.startEditing()
+        for item in T2G_Vertex.messliste:
+            ptnr = str(item['pointId']).lstrip("0")
+            x = str(item['targetX'])
+            y = str(item['targetY'])
+            z = str(item['targetZ'])
+            # Timmel Spiegelhöhe
+            try:
+                project = QgsProject.instance()
+                reflH = QgsExpressionContextUtils.projectScope(project).variable('reflH')
+                reflH = float(reflH)
+                z = round(float(z) - reflH, 3)
+            except:
+                pass
+
+            pt = QgsPoint(float(x), float(y), float(z))
+            attL = {'ptnr': ptnr, 'x': x, 'y': y, 'z': z, 'reflH': reflH}
+            self.addPoint3D(layer, pt, attL)
+            QgsMessageLog.logMessage(str(ptnr)+'|'+str(x)+'|'+str(y)+'|'+str(z), 'Messpunkte', Qgis.Info)
+        layer.commitChanges()
+        layer.removeSelection()
+
+    def addPoint3D(self, layer, point, attListe):
+        #layer.startEditing()
+        feature = QgsFeature()
+        fields = layer.fields()
+        feature.setFields(fields)
+        feature.setGeometry(QgsGeometry(point))
+        # Attribute
+        layer.dataProvider().addFeatures([feature])
+        layer.updateExtents()
+        features = [feature for feature in layer.getFeatures()]
+        lastfeature = features[-1]
+
+        for item in attListe:
+            #QgsMessageLog.logMessage(str(item), 'T2G', Qgis.Info)
+            fIndex = layer.dataProvider().fieldNameIndex(item)
+            layer.changeAttributeValue(lastfeature.id(), fIndex, attListe[item])
+        T2G_VertexList.addStaticAttribut(self,layer, lastfeature)
+        #layer.commitChanges()
+
+    def snap(self):
+        if self.dlg.checkBox.isChecked():
+            T2G_VertexList.snap = 1
+        else:
+            T2G_VertexList.snap = 0
+
 
     ## Restores the map tool to the one that was active before T2G was started
     #  The pan tool is the default tool used by QGIS
@@ -96,18 +171,19 @@ class Tachy2Gis:
         if self.previousTool is None:
             self.previousTool = QgsMapToolPan(self.iface.mapCanvas())
         self.iface.mapCanvas().setMapTool(self.previousTool)
+        self.iface.actionSelectRectangle().trigger()
 
-    def setActiveLayer(self):
+    def setActiveLayer(self): #Timmel
         if Qt is None:
             return
         activeLayer = self.dlg.sourceLayerComboBox.currentLayer()
-        if activeLayer is None:
+        if activeLayer is None or activeLayer.type() == QgsMapLayer.RasterLayer:
             return
         self.iface.setActiveLayer(activeLayer)
         self.vertexList.updateAnchors(activeLayer)
         
     def targetChanged(self):
-        targetLayer = self.fieldDialog.targetLayerComboBox.currentLayer()
+        targetLayer = self.fieldDialog.targetLayerComboBox.setLayer # Timmel
         self.mapTool.setGeometryType(targetLayer)
 
     def toggleEdit(self):
@@ -115,31 +191,25 @@ class Tachy2Gis:
 
     def connectSerial(self):
         port = self.dlg.portComboBox.currentText()
-        if not port == Tachy2Gis.NO_PORT:
-            self.tachyReader.setPort(port)
+        self.tachyReader.setPort(port)
 
     def setLog(self):
-        logFileName = QFileDialog.getOpenFileName()[0]
+        logFileName = QFileDialog.getSaveFileName()[0]
         self.dlg.logFileEdit.setText(logFileName)
         self.tachyReader.setLogfile(logFileName)
 
     def dumpEnabled(self):
-        verticesAvailable = (len(self.vertexList) > 0)
+        verticesAvailable = (len(self.vertexList) > 0) # tim > durch >= ersetzt
         # Selecting a target layer while there are no vertices in the vertex list may cause segfaults. To avoid this,
         # the 'Dump' button is disabled as long there are none:
         self.dlg.dumpButton.setEnabled(verticesAvailable)
-
-    def zoom_full_extent(self):
-        canvas = iface.mapCanvas()
-        canvas.zoomToFullExtent()
-        canvas.refresh()
 
     # Interface code goes here:
     def setupControls(self):
         """This method connects all controls in the UI to their callbacks.
         It is called in ad_action"""
-        portNames = [Tachy2Gis.NO_PORT]
-        portNames.extend([port.portName() for port in QSerialPortInfo.availablePorts()])
+
+        portNames = [port.portName() for port in QSerialPortInfo.availablePorts()]
         self.dlg.portComboBox.addItems(portNames)
         self.dlg.portComboBox.currentIndexChanged.connect(self.connectSerial)
 
@@ -158,28 +228,18 @@ class Tachy2Gis:
         self.dlg.finished.connect(self.restoreTool)
         self.dlg.accepted.connect(self.restoreTool)
         self.dlg.rejected.connect(self.restoreTool)
-        
-        self.dlg.sourceLayerComboBox.setFilters(QgsMapLayerProxyModel.VectorLayer | QgsMapLayerProxyModel.WritableLayer)
-        self.dlg.sourceLayerComboBox.setLayer(self.iface.activeLayer())
+
+
         self.dlg.sourceLayerComboBox.layerChanged.connect(self.setActiveLayer)
         self.dlg.sourceLayerComboBox.layerChanged.connect(self.mapTool.clear)
-        
+
+
         self.fieldDialog.targetLayerComboBox.layerChanged.connect(self.targetChanged)
         self.vertexList.layoutChanged.connect(self.dumpEnabled)
-        self.fieldDialog.buttonBox.accepted.connect(self.extent_provider.add_feature)
-        self.dlg.zoomResetButton.clicked.connect(self.extent_provider.reset)
 
-        self.dlg.zoomModeComboBox.addItems(['Layer',
-                                            'Last feature',
-                                            'Last 2 features',
-                                            'Last 4 features',
-                                            'Last 8 features',
-                                            ])
-        self.dlg.zoomModeComboBox.currentIndexChanged.connect(self.extent_provider.set_mode)
-        self.dlg.zoomActiveCheckBox.stateChanged.connect(self.auto_zoomer.set_active)
-        self.extent_provider.ready.connect(self.auto_zoomer.apply)
+        self.dlg.checkBox.stateChanged.connect(self.snap)
 
-    
+
     ## Constructor
     #  @param iface An interface instance that will be passed to this class
     #  which provides the hook by which you can manipulate the QGIS
@@ -212,9 +272,7 @@ class Tachy2Gis:
         
         ## From here: Own additions
         self.vertexList = T2G_VertexList()
-        self.extent_provider = ExtentProvider(self.vertexList, self.iface.mapCanvas())
-        self.auto_zoomer = AutoZoomer(self.iface.mapCanvas(), self.extent_provider)
-
+        
         self.mapTool = T2G_VertexePickerTool(self)
         self.previousTool = None
         self.fieldDialog = FieldDialog(self.iface.activeLayer())
@@ -226,6 +284,7 @@ class Tachy2Gis:
         self.tachyReader.beginListening()
 
     # noinspection PyMethodMayBeStatic
+
     def tr(self, message):
         """Get the translation for a string using Qt translation API.
 
@@ -291,7 +350,7 @@ class Tachy2Gis:
         """
 
         # Create the dialog (after translation) and keep reference
-        self.dlg = Tachy2GisDialog()
+        self.dlg = Tachy2GisDialog(iface.mainWindow()) # Dialog im Vordergrund halten.
         self.setupControls()
 
         icon = QIcon(icon_path)
@@ -341,20 +400,35 @@ class Tachy2Gis:
             self.pollingThread.terminate()
             self.pollingThread.wait()
 
+
     def run(self):
         """Run method that performs all the real work"""
         # Store the active map tool and switch to the T2G_VertexPickerTool
         self.previousTool = self.iface.mapCanvas().mapTool()
         self.iface.mapCanvas().setMapTool(self.mapTool)
         self.mapTool.alive = True
-        self.setActiveLayer()
+        #self.setActiveLayer()
+        self.dlg.sourceLayerComboBox.setLayer(self.iface.activeLayer())
         self.dlg.show()
 
+        outLayerList = []
+        self.layerLine = QgsProject.instance().mapLayersByName('E_Line')[0]
+        self.layerPoly = QgsProject.instance().mapLayersByName('E_Polygon')[0]
+        self.layerPoint = QgsProject.instance().mapLayersByName('E_Point')[0]
+        for lay in QgsProject.instance().mapLayers().values():
+            if lay == self.layerLine or lay == self.layerPoly or lay == self.layerPoint:
+                QgsMessageLog.logMessage('gleich', 'T2G Archäologie', Qgis.Info)
+                pass
+            else:
+                QgsMessageLog.logMessage(lay.name(), 'T2G Archäologie', Qgis.Info)
+                outLayerList.append(lay)
+        self.dlg.sourceLayerComboBox.setExceptedLayerList(outLayerList)
+
         # Run the dialog event loop
-        result = self.dlg.exec_()
+        #result = self.dlg.exec_()
         # See if OK was pressed
-        if result:
-            
+        #self.dlg.close()
+        #if result:
             # Do something useful here - delete the line containing pass and
             # substitute with your code.
-            pass
+            #pass
