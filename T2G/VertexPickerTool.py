@@ -7,7 +7,7 @@ from qgis.core import *
 from qgis.gui import *
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import *
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import *
 from .VertexList import T2G_Vertex, T2G_VertexList
 
 
@@ -20,32 +20,34 @@ class T2G_VertexePickerTool(QgsMapTool):
     RB_COLOR = Qt.red
     ## Rubberband fill color, alpha set to 50%
     RB_FILLCOLOR = QColor(255, 0, 0, 127)
+
     def __init__(self, parent): #tableModel, vertexIndex, zIndex):
         
         QgsMapTool.__init__(self, parent.iface.mapCanvas())
         self.parent = parent
         self.canvas = parent.iface.mapCanvas()
-        # self.emitPoint = QgsMapToolEmitPoint(self.canvas)
+        #self.emitPoint = QgsMapToolEmitPoint(self.canvas)
         self.vertexList = parent.vertexList
         self.rubberBand = QgsRubberBand(self.canvas)
-        self.geometryType = QgsWkbTypes.PolygonGeometry
+        self.geometryType = QgsWkbTypes.Polygon
+        self.geometryType = 3
         self.rubberBand.setColor(self.RB_COLOR)
         self.rubberBand.setFillColor(self.RB_FILLCOLOR)
-        self.rubberBand.setWidth(1)
+        self.rubberBand.setWidth(3)
         self.markers = []
         self.reset()
         self.alive = False
-        
+
     def setGeometryType(self, layer):
         if not self.alive:
             return
-        if layer is None:
-            return
-        self.geometryType = layer.geometryType()
-        geometry = self.rubberBand.asGeometry()
-        self.rubberBand.reset(self.geometryType)
-        self.rubberBand.addGeometry(geometry, layer)
-        
+        try: #Timmel
+            self.geometryType = layer.geometryType()
+            geometry = self.rubberBand.asGeometry()
+            self.rubberBand.reset(self.geometryType)
+            self.rubberBand.addGeometry(geometry, layer)
+        except:
+            pass
     
     ## Reset the rubber band and clean up markers
     def reset(self):
@@ -59,6 +61,7 @@ class T2G_VertexePickerTool(QgsMapTool):
             vertex = vtx
         else:
             vertex = T2G_Vertex(label, source, x, y, z)
+
         adjusted = self.vertexList.append(vertex)
         self.rubberBand.addPoint(adjusted.getQgsPointXY(), True)
         index = len(self.markers)
@@ -85,19 +88,25 @@ class T2G_VertexePickerTool(QgsMapTool):
             self.canvas.scene().removeItem(marker)
         self.reset()
         self.vertexList.clear()
+        T2G_Vertex.messliste.clear()#Timmel
         
     ## Finds the nearest existing 3D vertex, and adds it to the vertex list
     def canvasReleaseEvent(self, event):
-        if self.vertexList.hasAnchors():
-            x = event.pos().x()
-            y = event.pos().y()
-            point = self.canvas.getCoordinateTransform().toMapCoordinates(x, y)
-            self.addVertex(None, T2G_Vertex.SOURCE_INTERNAL, point.x(), point.y(), None)            
+        #if self.vertexList.hasAnchors():
+        x = event.pos().x()
+        y = event.pos().y()
+        if self.parent.dlg.lineEdit.text()== '':
+            z = 0
         else:
-            QMessageBox(QMessageBox.Critical,
-                        "No Anchors Available",
-                        "Current layer has no anchors to snap to.",
-                        QMessageBox.Ok).exec_()
+            z = float(self.parent.dlg.lineEdit.text().replace(",","."))  #Timmel
+
+        point = self.canvas.getCoordinateTransform().toMapCoordinates(x, y)
+        self.addVertex(None, T2G_Vertex.SOURCE_INTERNAL, point.x(), point.y(), z) #Timmel
+        #else:
+        #    QMessageBox(QMessageBox.Critical,
+        #                "No Anchors Available",
+        #                "Current layer has no anchors to snap to.",
+        #                QMessageBox.Ok).exec_()
         
     def selectVertex(self):
         selection = self.parent.dlg.vertexTableView.selectionModel().selectedRows()
