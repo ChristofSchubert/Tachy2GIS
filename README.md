@@ -3,4 +3,4 @@ For more details, see the manual (LINK_en).
 
 Tachy2GIS (T2G) ist ein Fork des QGIS Plugins https://github.com/Archaeological-Museum-Hamburg/Tachy2GIS/tree/master zur direkten Erstellung von Geometrien aus Tachymeter-Messdaten (“live-Messung”). Zur Messung wird eine Verbindung zu einem Leica Tachymeter der TPS400er-Serie oder FlexLine-Serie (TS02, TS06 oder TS07) über die Bluetooth- oder RS232-schnittstelle benötigt. 
 T2G wurde für die Anwendung mit der Fachschale Tachy2GIS_arch (LINK) angepasst. Die Abhängigkeit von pyhsp wurde entfernt, so dass keine Installation weiterer Software mehr nötig ist.
-Weitere Details finden Sie im Handbuch (LINK_de). 
+Weitere Details finden Sie im Handbuch. 
